@@ -37,14 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create a CRD clientset
-	crdClientset, err := clientset.NewForConfig(config)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating CRD clientset: %s\n", err.Error())
-		os.Exit(1)
-	}
-
-	crds, err := crdClientset.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+	crds, err := clientset.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing CRDs: %s\n", err.Error())
 		os.Exit(1)
