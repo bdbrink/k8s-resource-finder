@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -28,22 +29,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating clientset: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	resources, err := clientset.Discovery().ServerPreferredResources()
+	namespaces, err := clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing resources: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error listing namespaces: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	for _, apiResourceList := range resources {
-		fmt.Printf("API Group: %s\n", apiResourceList.GroupVersion)
-		for _, apiResource := range apiResourceList.APIResources {
-			fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
+	fmt.Println("Namespaces:")
+	for _, ns := range namespaces.Items {
+		fmt.Printf("- %s\n", ns.Name)
+	}
+
+	for _, ns := range namespaces.Items {
+		fmt.Printf("\nResources in Namespace: %s\n", ns.Name)
+
+		resources, err := clientset.Discovery().ServerPreferredResources()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing resources: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		for _, apiResourceList := range resources {
+			fmt.Printf("API Group: %s\n", apiResourceList.GroupVersion)
+			for _, apiResource := range apiResourceList.APIResources {
+				fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
+			}
 		}
 	}
 }
