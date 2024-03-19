@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	_ "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -38,49 +38,38 @@ func main() {
 		os.Exit(1)
 	}
 
-	// List all CRDs in the cluster
-	crdClientset, err := clientset.NewForConfig(config)
+	// Create a CRD clientset
+	crdClientset, err := apiextv1.NewForConfig(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating CRD clientset: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	crds, err := clientset.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
+	// List all CRDs in the cluster
+	crds, err := crdClientset.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing CRDs: %s\n", err.Error())
 		os.Exit(1)
 	}
 
+	// Print the CRDs
 	fmt.Println("Custom Resource Definitions:")
 	for _, crd := range crds.Items {
 		fmt.Printf("- %s\n", crd.Name)
 	}
 
-	namespaces, err := clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	// List all resources in the cluster
+	resources, err := clientset.Discovery().ServerPreferredResources()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing namespaces: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error listing resources: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	fmt.Println("Namespaces:")
-	for _, ns := range namespaces.Items {
-		fmt.Printf("- %s\n", ns.Name)
-	}
-
-	for _, ns := range namespaces.Items {
-		fmt.Printf("\nResources in Namespace: %s\n", ns.Name)
-
-		resources, err := clientset.Discovery().ServerPreferredResources()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing resources: %s\n", err.Error())
-			os.Exit(1)
-		}
-
-		for _, apiResourceList := range resources {
-			fmt.Printf("API Group: %s\n", apiResourceList.GroupVersion)
-			for _, apiResource := range apiResourceList.APIResources {
-				fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
-			}
+	// Print the resources
+	for _, apiResourceList := range resources {
+		fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
+		for _, apiResource := range apiResourceList.APIResources {
+			fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
 		}
 	}
 }
