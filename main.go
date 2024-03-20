@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	apiextv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -18,17 +16,21 @@ func main() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig file")
 	flag.Parse()
 
-	// Use the current context in kubeconfig file
+	// Use the provided kubeconfig file if specified, otherwise use the default in-cluster config
 	var config *rest.Config
 	var err error
-	if kubeconfig == "" {
-		config, err = rest.InClusterConfig()
-	} else {
+	if kubeconfig != "" {
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error building kubeconfig: %s\n", err.Error())
-		os.Exit(1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error building kubeconfig: %s\n", err.Error())
+			os.Exit(1)
+		}
+	} else {
+		config, err = rest.InClusterConfig()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error building in-cluster kubeconfig: %s\n", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	// Create a Kubernetes clientset
@@ -39,7 +41,7 @@ func main() {
 	}
 
 	// Create a CRD clientset
-	crdClientset, err := apiextv1.NewForConfig(config)
+	crdClientset, err := clientset.NewForConfig(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating CRD clientset: %s\n", err.Error())
 		os.Exit(1)
