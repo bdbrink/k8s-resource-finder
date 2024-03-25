@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -48,17 +48,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// List all CRDs in the cluster
-	crds, err := crdClientset.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing CRDs: %s\n", err.Error())
-		os.Exit(1)
-	}
+	// WaitGroup to wait for all Goroutines to finish
+	var wg sync.WaitGroup
 
-	// Print the CRDs
+	// Channel to receive CRDs from Goroutines
+	crdCh := make(chan *metav1.APIResourceList)
+
+	// Retrieve CRDs concurrently
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		crds, err := crdClientset.Discovery().ServerPreferredResources()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing CRDs: %s\n", err.Error())
+			return
+		}
+		crdCh <- crds
+	}()
+
+	// Receive CRDs from the channel
+	go func() {
+		wg.Wait()
+		close(crdCh)
+	}()
+
+	// Print CRDs
 	fmt.Println("Custom Resource Definitions:")
-	for _, crd := range crds.Items {
-		fmt.Printf("- %s\n", crd.Name)
+	for crds := range crdCh {
+		for _, apiResourceList := range crds {
+			fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
+			for _, apiResource := range apiResourceList.APIResources {
+				fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
+			}
+		}
 	}
 
 	// List all resources in the cluster
@@ -69,6 +91,7 @@ func main() {
 	}
 
 	// Print the resources
+	fmt.Println("\nAll Resources in the Cluster:")
 	for _, apiResourceList := range resources {
 		fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
 		for _, apiResource := range apiResourceList.APIResources {
