@@ -66,22 +66,24 @@ func main() {
 		crdCh <- crds
 	}()
 
-	// Receive CRDs from the channel
-	go func() {
-		wg.Wait()
-		close(crdCh)
-	}()
-
-	// Print CRDs
-	fmt.Println("Custom Resource Definitions:")
-	for crds := range crdCh {
-		for _, apiResourceList := range crds {
-			fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
-			for _, apiResource := range apiResourceList.APIResources {
-				fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
+	// Process CRDs concurrently
+	for i := 0; i < 5; i++ { // Adjust the number of Goroutines as needed
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for crds := range crdCh {
+				for _, apiResourceList := range crds {
+					fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
+					for _, apiResource := range apiResourceList.APIResources {
+						fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
+					}
+				}
 			}
-		}
+		}()
 	}
+
+	// Wait for all Goroutines to finish
+	wg.Wait()
 
 	// List all resources in the cluster
 	resources, err := clientset.Discovery().ServerPreferredResources()
