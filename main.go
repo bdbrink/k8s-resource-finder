@@ -8,14 +8,12 @@ import (
 	"sort"
 	"sync"
 
-	"k8s.io/apimachinery/pkg/api/resource" // Import core/v1 package
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
-
-
 
 func main() {
 	var kubeconfig string
@@ -64,7 +62,8 @@ func main() {
 		wg.Add(1)
 		go func(pod metav1.Pod) {
 			defer wg.Done()
-			metrics, err := clientset.CoreV1().Pods(pod.Namespace).GetMetrics(context.Background(), pod.Name, metav1.GetOptions{})
+			metricsGetter := clientset.CoreV1().Pods(pod.Namespace)
+			metrics, err := metricsGetter.GetMetrics(context.Background(), pod.Name, metav1.GetOptions{})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error getting metrics for pod %s/%s: %s\n", pod.Namespace, pod.Name, err.Error())
 				return
@@ -87,8 +86,8 @@ func main() {
 
 	// Sort pods by CPU and memory usage
 	sort.Slice(podMetrics, func(i, j int) bool {
-		return getResourceUsage(podMetrics[i].Metrics, "cpu") > getResourceUsage(podMetrics[j].Metrics, "cpu") ||
-			getResourceUsage(podMetrics[i].Metrics, "memory") > getResourceUsage(podMetrics[j].Metrics, "memory")
+		return getResourceUsage(podMetrics[i].Metrics, "cpu").Cmp(getResourceUsage(podMetrics[j].Metrics, "cpu")) > 0 ||
+			getResourceUsage(podMetrics[i].Metrics, "memory").Cmp(getResourceUsage(podMetrics[j].Metrics, "memory")) > 0
 	})
 
 	// Print the most resource-intensive pods
