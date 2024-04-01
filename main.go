@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -41,63 +44,74 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create a CRD clientset
-	crdClientset, err := clientset.NewForConfig(config)
+	// Retrieve all pods
+	pods, err := clientset.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating CRD clientset: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error listing pods: %s\n", err.Error())
 		os.Exit(1)
 	}
 
 	// WaitGroup to wait for all Goroutines to finish
 	var wg sync.WaitGroup
 
-	// Channel to receive CRDs from Goroutines
-	crdCh := make(chan *metav1.APIResourceList)
+	// Channel to receive pod metrics from Goroutines
+	metricsCh := make(chan PodMetrics)
 
-	// Retrieve CRDs concurrently
-	wg.Add(1)
+	// Retrieve resource usage metrics for each pod concurrently
+	for _, pod := range pods.Items {
+		wg.Add(1)
+		go func(pod metav1.Pod) {
+			defer wg.Done()
+			metrics, err := clientset.CoreV1().Pods(pod.Namespace).GetMetrics(context.Background(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting metrics for pod %s/%s: %s\n", pod.Namespace, pod.Name, err.Error())
+				return
+			}
+			metricsCh <- PodMetrics{Pod: pod, Metrics: metrics}
+		}(pod)
+	}
+
+	// Close the metrics channel after all Goroutines finish
 	go func() {
-		defer wg.Done()
-		crds, err := crdClientset.Discovery().ServerPreferredResources()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing CRDs: %s\n", err.Error())
-			return
-		}
-		crdCh <- crds
+		wg.Wait()
+		close(metricsCh)
 	}()
 
-	// Process CRDs concurrently
-	for i := 0; i < 5; i++ { // Adjust the number of Goroutines as needed
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for crds := range crdCh {
-				for _, apiResourceList := range crds {
-					fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
-					for _, apiResource := range apiResourceList.APIResources {
-						fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
-					}
-				}
-			}
-		}()
+	// Collect pod metrics from the channel
+	var podMetrics []PodMetrics
+	for metric := range metricsCh {
+		podMetrics = append(podMetrics, metric)
 	}
 
-	// Wait for all Goroutines to finish
-	wg.Wait()
+	// Sort pods by CPU and memory usage
+	sort.Slice(podMetrics, func(i, j int) bool {
+		return getResourceUsage(podMetrics[i].Metrics, "cpu") > getResourceUsage(podMetrics[j].Metrics, "cpu") ||
+			getResourceUsage(podMetrics[i].Metrics, "memory") > getResourceUsage(podMetrics[j].Metrics, "memory")
+	})
 
-	// List all resources in the cluster
-	resources, err := clientset.Discovery().ServerPreferredResources()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing resources: %s\n", err.Error())
-		os.Exit(1)
+	// Print the most resource-intensive pods
+	fmt.Println("Most Resource-Intensive Pods:")
+	for _, pm := range podMetrics {
+		cpuUsage := getResourceUsage(pm.Metrics, "cpu")
+		memUsage := getResourceUsage(pm.Metrics, "memory")
+		fmt.Printf("- Pod: %s/%s, CPU Usage: %s, Memory Usage: %s\n", pm.Pod.Namespace, pm.Pod.Name, cpuUsage.String(), memUsage.String())
 	}
+}
 
-	// Print the resources
-	fmt.Println("\nAll Resources in the Cluster:")
-	for _, apiResourceList := range resources {
-		fmt.Printf("\nAPI Group: %s\n", apiResourceList.GroupVersion)
-		for _, apiResource := range apiResourceList.APIResources {
-			fmt.Printf("  - Kind: %s, Name: %s, Namespaced: %t\n", apiResource.Kind, apiResource.Name, apiResource.Namespaced)
-		}
+// PodMetrics represents metrics for a pod
+type PodMetrics struct {
+	Pod     metav1.Pod
+	Metrics *metav1.PodMetrics
+}
+
+// getResourceUsage returns the resource usage for a pod (CPU or memory)
+func getResourceUsage(metrics *metav1.PodMetrics, resourceType string) resource.Quantity {
+	switch resourceType {
+	case "cpu":
+		return metrics.Containers[0].Usage["cpu"]
+	case "memory":
+		return metrics.Containers[0].Usage["memory"]
+	default:
+		return resource.Quantity{}
 	}
 }
