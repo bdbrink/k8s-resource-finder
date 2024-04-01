@@ -8,12 +8,14 @@ import (
 	"sort"
 	"sync"
 
-	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/api/resource" // Import core/v1 package
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+
 
 func main() {
 	var kubeconfig string
