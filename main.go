@@ -1,19 +1,18 @@
 package main
 
 import (
-    "context"
-    "flag"
-    "fmt"
-    "os"
-    "sort"
-    "sync"
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"sort"
+	"sync"
 
-    "k8s.io/apimachinery/pkg/api/resource"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-    "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
-    "k8s.io/client-go/tools/clientcmd"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // PodMetrics represents metrics for a pod
@@ -108,5 +107,14 @@ func main() {
     // Sort pods by CPU and memory usage
     sort.Slice(podMetrics, func(i, j int) bool {
         return getResourceUsage(podMetrics[i].Metrics, "cpu").Cmp(getResourceUsage(podMetrics[j].Metrics, "cpu")) > 0 ||
-            getResourceUsage(pod)
-	},
+            getResourceUsage(podMetrics[i].Metrics, "memory").Cmp(getResourceUsage(podMetrics[j].Metrics, "memory")) > 0
+    })
+
+    // Print the most resource-intensive pods
+    fmt.Println("Most Resource-Intensive Pods:")
+    for _, pm := range podMetrics {
+        cpuUsage := getResourceUsage(pm.Metrics, "cpu")
+        memUsage := getResourceUsage(pm.Metrics, "memory")
+        fmt.Printf("- Pod: %s/%s, CPU Usage: %s, Memory Usage: %s\n", pm.Pod.Namespace, pm.Pod.Name, cpuUsage.String(), memUsage.String())
+    }
+}
