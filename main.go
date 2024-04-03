@@ -39,20 +39,13 @@ func main() {
 	flag.Parse()
 
 	// Use the provided kubeconfig file if specified, otherwise use the default in-cluster config
-	var config *rest.Config
-	var err error
+	config, err := rest.InClusterConfig()
 	if kubeconfig != "" {
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error building kubeconfig: %s\n", err.Error())
-			os.Exit(1)
-		}
-	} else {
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error building in-cluster kubeconfig: %s\n", err.Error())
-			os.Exit(1)
-		}
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error building kubeconfig: %s\n", err.Error())
+		os.Exit(1)
 	}
 
 	// Create a Kubernetes clientset
@@ -61,7 +54,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error creating clientset: %s\n", err.Error())
 		os.Exit(1)
 	}
-
 	defer clientset.Close() // Close clientset on exit
 
 	// Retrieve all pods
@@ -82,8 +74,8 @@ func main() {
 		wg.Add(1)
 		go func(pod metav1.Pod) {
 			defer wg.Done()
-			metricsGetter := clientset.CoreV1().Pods(pod.Namespace)
-			metrics, err := metricsGetter.GetMetrics(context.Background(), pod.Name, metav1.GetOptions{})
+			metricsGetter := clientset.CoreV1().PodMetricses(pod.Namespace)
+			metrics, err := metricsGetter.Get(context.Background(), pod.Name, metav1.GetOptions{})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error getting metrics for pod %s/%s: %s\n", pod.Namespace, pod.Name, err.Error())
 				return
